@@ -38,10 +38,10 @@ target_page_id = ""
 create_database_entries = false
 
 [extraction]
-# 正文提取的首选工具，按优先级排列
-# 可选: "jina", "webfetch", "browser"
-# Jina Reader (r.jina.ai) 免费且质量好，推荐作为首选
-preferred_order = ["jina", "webfetch", "browser"]
+# 采集策略由 fetch-strategy.toml 单独管理
+# 该文件定义降级链、域名路由、选择器等
+# 仓库预设会在 init 时拷贝到此目录，你可以自由修改
+# strategy_file = "fetch-strategy.toml"
 
 [prompt_mode]
 # 是否在 prompt 中包含完整正文（false 则只包含摘要，更精简）
@@ -126,15 +126,26 @@ MD
 echo "Created good-shots README at $CONFIG_DIR/good-shots/README.md"
 fi
 
+# Copy default fetch-strategy.toml if not exists
+# 用户可修改此文件覆盖仓库中的默认采集策略
+if [ ! -f "$CONFIG_DIR/fetch-strategy.toml" ]; then
+  SKILL_DIR="$(cd "$(dirname "$0")/.." && pwd)"
+  if [ -f "$SKILL_DIR/references/fetch-strategy.toml" ]; then
+    cp "$SKILL_DIR/references/fetch-strategy.toml" "$CONFIG_DIR/fetch-strategy.toml"
+    echo "Created fetch strategy at $CONFIG_DIR/fetch-strategy.toml"
+  fi
+fi
+
 echo ""
 echo "Link Researcher config initialized at $CONFIG_DIR"
 echo ""
 echo "Directory structure:"
 echo "  $CONFIG_DIR/"
-echo "  ├── config.toml        # 全局设置"
-echo "  ├── personas/          # 分析视角"
+echo "  ├── config.toml            # 全局设置"
+echo "  ├── fetch-strategy.toml    # 采集策略（覆盖仓库默认）"
+echo "  ├── personas/              # 分析视角"
 echo "  │   └── default.md"
-echo "  ├── templates/         # 自定义分析卡模板"
-echo "  ├── good-shots/        # 优质输出示例"
+echo "  ├── templates/             # 自定义分析卡模板"
+echo "  ├── good-shots/            # 优质输出示例"
 echo "  │   └── README.md"
-echo "  └── preferences.md     # 累积偏好"
+echo "  └── preferences.md         # 累积偏好"

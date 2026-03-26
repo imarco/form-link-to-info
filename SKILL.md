@@ -40,7 +40,8 @@ description: >
    - 如果链接下方紧跟着 markdown 格式的摘要内容，标记为"已有预提取内容"
    - 这些内容可以跳过抓取步骤，但仍需要分类和分析
 4. 标记特殊链接：
-   - 🔒 需要登录（微信公众号 `mp.weixin.qq.com`、小红书 `xiaohongshu.com`、知乎专栏等）
+   - 🔒 需要登录（小红书 `xiaohongshu.com`、知乎专栏等）
+   - 🛡️ 反爬但可穿透（微信公众号 `mp.weixin.qq.com` → Scrapling 可直接读取）
    - ⚠️ 可能无法直接抓取
    - 🔗 跳转/短链接
 5. 按域名分组，规划访问顺序（同域名连续访问更高效）
@@ -50,44 +51,45 @@ description: >
 
 **首要目标是拿到每个链接页面的完整正文（markdown 格式）。** 分析和摘要是后续步骤。
 
-### 提取策略（按优先级尝试）
+### 加载采集策略
+
+采集策略定义在 `fetch-strategy.toml` 中，按以下优先级加载：
+
+1. **用户自定义**：`~/.config/link-researcher/fetch-strategy.toml`（如果存在，优先使用）
+2. **仓库预设**：`references/fetch-strategy.toml`（默认策略，随仓库更新）
+
+策略文件包含：降级链定义、域名快捷路由、正文选择器、html2text 参数等。
+用户可修改自己的副本来覆盖仓库默认值（增删域名路由、调整降级顺序、自定义选择器等）。
+
+### 环境检测
+
+在首次访问前，检测当前可用的工具，与 `fetch-strategy.toml` 中的 `fallback_chain` 对照，
+剔除不可用的层级，确定实际降级链。在报告开头简要说明使用了哪些工具。
+
+### 执行流程
 
 ```
 输入链接
   │
-  ├─ 已有预提取内容（如 YouNet 摘要）？ → 直接使用，跳到分类步骤
+  ├─ 已有预提取内容？ → 直接使用，跳到分类步骤
   │
-  ├─ 1. Jina Reader：WebFetch 访问 https://r.jina.ai/{原始URL}
-  │   └─ 返回干净的 markdown 正文，免费，适合大多数公开网页
+  ├─ 命中 domain_routes？ → 跳到指定方案（节省配额、避免已知失败）
   │
-  ├─ 2. WebFetch 直接访问原始 URL
-  │   └─ Jina 失败时的备选
-  │
-  ├─ 3. 浏览器自动化（需要登录态的页面）
-  │   ├─ 检测环境：
-  │   │   ├─ Claude in Chrome MCP 可用？ → 使用 Chrome 工具读取页面
-  │   │   ├─ Openclaw 环境？ → 使用系统浏览器（通常已有登录态）
-  │   │   └─ Playwright MCP 可用？ → 使用 Playwright 浏览器
-  │   └─ 适合：微信公众号、小红书、需登录的平台
-  │
-  └─ 4. 全部失败 → 标记为受限，基于 URL 和已知信息尽量判断
+  └─ 按 fallback_chain 顺序依次尝试 → 成功即停止 → 全部失败则标记受限
 ```
 
-### 环境检测
+具体的降级链顺序、域名路由表、选择器配置等均由 `fetch-strategy.toml` 驱动，
+不在此处硬编码——方便用户根据实际采集经验持续迭代。
 
-在首次访问前，检测当前可用的工具：
+### Scrapling 环境准备
 
-```
-可用工具清单（按检测顺序）：
-- WebFetch → 几乎总是可用
-- mcp__Claude_in_Chrome__* → Claude in Chrome 扩展
-- mcp__chrome-devtools__* → Chrome DevTools MCP
-- mcp__Control_Chrome__* → Control Chrome MCP
-- mcp__plugin_playwright_playwright__* → Playwright 浏览器
-- mcp__computer-use__* → Computer Use（最后手段）
+当降级链中包含 `scrapling` 层时，首次使用前检查依赖：
+
+```bash
+pip install scrapling html2text 2>/dev/null
 ```
 
-根据可用工具确定降级策略，在报告开头简要说明使用了哪些工具。
+如果安装失败（无 Python 环境等），跳过该层，继续降级。
 
 ### 视频链接的特殊处理
 
@@ -144,12 +146,14 @@ description: >
 
 ### 无法访问链接的特殊处理
 
-对于无法直接访问的链接（如微信公众号），使用醒目标注：
+对于无法访问的链接，使用醒目标注：
 
 ```
-> ⚠️ **无法直接访问** — 此链接为微信公众号文章，需在微信客户端中打开。
+> ⚠️ **无法直接访问** — 此链接需要登录态或有极端反爬机制。
 > 以下分析基于 URL 信息和有限可见内容。
 ```
+
+注意：微信公众号（`mp.weixin.qq.com`）现在可以通过 Scrapling 直接读取全文，不再是"无法访问"类型。
 
 ## 第六步：分批策略
 

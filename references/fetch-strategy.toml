@@ -1,0 +1,138 @@
+# fetch-strategy.toml — 网页内容采集策略
+#
+# 此文件定义了 link-researcher 的内容提取降级链、域名路由和工具配置。
+# 用户副本位于 ~/.config/link-researcher/fetch-strategy.toml
+# 随着采集经验积累可随时修改，也可同步回仓库作为社区默认值。
+#
+# 更新日志：
+# 2026-03-26  新增 Scrapling + html2text 层；新增域名快捷路由
+
+# ── 全局参数 ──────────────────────────────────────────
+
+[global]
+# 所有提取方式统一截断字符数，平衡正文完整性与 token 消耗
+max_chars = 30000
+
+# 单个链接最大重试次数（跨层级累计）
+max_retries = 1
+
+# 某一层超时秒数（超时则跳到下一层）
+timeout_seconds = 15
+
+# ── 降级链 ────────────────────────────────────────────
+# 按数组顺序依次尝试，前一层成功则停止
+# 可选 id: "jina" | "scrapling" | "webfetch" | "browser" | "computer-use"
+
+[[fallback_chain]]
+id = "jina"
+name = "Jina Reader"
+method = "webfetch"                     # 通过 WebFetch 调用 Jina
+url_pattern = "https://r.jina.ai/{url}" # {url} 会被替换为原始链接
+daily_limit = 200                       # 免费额度
+best_for = "大部分英文博客、Substack、Medium、公开技术文档"
+notes = "质量最高，返回干净 Markdown，但有每日限额"
+
+[[fallback_chain]]
+id = "scrapling"
+name = "Scrapling + html2text"
+method = "bash"                         # 通过 Bash 调用 Python 脚本
+command = "python3 {skill_dir}/scripts/scrapling_fetch.py {url} {max_chars}"
+daily_limit = 0                         # 无限制
+best_for = "Jina 超限后的通用替代、微信公众号、反爬平台"
+notes = "效果接近 Jina，无次数限制，能绕过 Cloudflare 等反爬。必须用 html2text 转 Markdown"
+requires = ["scrapling", "html2text"]   # pip 依赖
+
+[[fallback_chain]]
+id = "webfetch"
+name = "WebFetch 直接抓取"
+method = "webfetch"                     # 直接 WebFetch 原始 URL
+url_pattern = "{url}"
+daily_limit = 0
+best_for = "静态页面、GitHub README、普通技术博客、官方文档"
+notes = "返回全页内容，含导航栏/侧边栏等噪音，token 浪费较多"
+
+[[fallback_chain]]
+id = "browser"
+name = "浏览器自动化"
+method = "browser"                      # 使用可用的浏览器 MCP
+daily_limit = 0
+best_for = "需要登录态、极端反爬、JS 重度渲染页面"
+notes = "最慢但最强，按 Chrome MCP > Playwright > Computer Use 顺序选择"
+# 浏览器工具优先级（按顺序检测可用性）
+browser_priority = [
+    "mcp__Claude_in_Chrome__get_page_text",
+    "mcp__chrome-devtools__take_snapshot",
+    "mcp__Control_Chrome__get_page_content",
+    "mcp__plugin_playwright_playwright__browser_snapshot",
+    "mcp__computer-use__screenshot",
+]
+
+# ── 域名快捷路由 ──────────────────────────────────────
+# 命中的域名直接跳到指定方案，不走标准降级链
+# skip_layers: 跳过这些层（节省配额或避免已知失败）
+
+[[domain_routes]]
+pattern = "mp.weixin.qq.com"
+go_to = "scrapling"
+skip_layers = ["jina"]
+reason = "Jina 被微信 403 拦截，Scrapling StealthyFetcher 能绕过"
+
+[[domain_routes]]
+pattern = "xiaohongshu.com"
+go_to = "browser"
+skip_layers = ["jina", "scrapling", "webfetch"]
+reason = "需要登录态，只有浏览器自动化能拿到内容"
+
+[[domain_routes]]
+pattern = "weibo.com"
+go_to = "scrapling"
+skip_layers = ["jina"]
+reason = "反爬严格，Scrapling 大概率能穿透；失败再走浏览器"
+
+[[domain_routes]]
+pattern = "zhihu.com"
+go_to = "scrapling"
+skip_layers = ["jina"]
+reason = "知乎反爬频繁变化，Scrapling 比 Jina 稳定"
+
+# ── 域名路由模板 ──────────────────────────────────────
+# 采集新域名遇到问题时，复制此模板添加新路由：
+#
+# [[domain_routes]]
+# pattern = "example.com"          # 域名匹配（支持子域名）
+# go_to = "scrapling"              # 直接使用的方案 id
+# skip_layers = ["jina"]           # 跳过的层
+# reason = "简要说明原因"
+
+# ── 正文选择器（Scrapling 专用）────────────────────────
+# 按优先级尝试 CSS 选择器定位正文容器
+
+[scrapling]
+# 通用选择器（按优先级排列）
+selectors = [
+    "article",
+    "main",
+    ".post-content",
+    ".article-content",
+    ".entry-content",
+    "[class*='body']",
+    "#content",
+    ".content",
+]
+
+# 特定域名的选择器覆盖
+[scrapling.domain_selectors]
+"mp.weixin.qq.com" = ["#js_content"]
+"zhihu.com" = [".Post-RichText", ".RichText"]
+"juejin.cn" = [".markdown-body", ".article-content"]
+"medium.com" = ["article"]
+"substack.com" = [".body.markup"]
+
+# ── html2text 配置 ─────────────────────────────────────
+
+[html2text]
+ignore_links = false
+ignore_images = false
+body_width = 0           # 不自动折行
+skip_internal_links = true
+inline_links = true

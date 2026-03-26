@@ -6,7 +6,7 @@
 
 ## 功能
 
-- **正文提取**：Jina Reader → WebFetch → 浏览器自动化（Playwright / Chrome），多级降级策略
+- **正文提取**：Jina Reader → Scrapling + html2text → WebFetch → 浏览器自动化，多级降级策略
 - **类型识别**：自动分类为 Git 仓库 / 产品官网 / 文章 / 视频 / 社媒帖文 / 文档 / 平台等
 - **差异化分析**：不同类型使用不同分析卡模板（项目分析卡、产品研究卡、内容洞察卡等）
 - **多视角判断**：综合技术、产品、投资、内容创作视角给出独立判断和后续行动建议
@@ -40,17 +40,30 @@ https://github.com/langgenius/dify
 https://dify.ai/
 ```
 
+## 采集策略
+
+仓库内置了默认的网页采集策略（`references/fetch-strategy.toml`），包含：
+
+- **降级链**：Jina Reader → Scrapling + html2text → WebFetch → 浏览器自动化
+- **域名快捷路由**：微信公众号直接走 Scrapling（跳过 Jina），小红书走浏览器自动化等
+- **正文选择器**：通用选择器 + 特定域名选择器覆盖
+- **html2text 参数**：保留链接、图片，不自动折行
+
+首次使用时会自动拷贝到 `~/.config/link-researcher/fetch-strategy.toml`。
+你可以修改本地副本来自定义覆盖（比如添加新的域名路由、调整降级顺序），仓库更新不会覆盖你的自定义配置。
+
 ## 配置
 
 首次使用时自动初始化 `~/.config/link-researcher/`：
 
 ```
 ~/.config/link-researcher/
-├── config.toml        # 全局设置（默认输出方式、批量大小等）
-├── personas/          # 分析视角定义
-├── templates/         # 自定义分析卡模板（覆盖默认）
-├── good-shots/        # 优质输出示例（质量标杆）
-└── preferences.md     # 累积偏好
+├── config.toml            # 全局设置（默认输出方式、批量大小等）
+├── fetch-strategy.toml    # 采集策略（覆盖仓库默认值）
+├── personas/              # 分析视角定义
+├── templates/             # 自定义分析卡模板（覆盖默认）
+├── good-shots/            # 优质输出示例（质量标杆）
+└── preferences.md         # 累积偏好
 ```
 
 ## License
