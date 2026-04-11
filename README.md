@@ -52,6 +52,26 @@ https://dify.ai/
 首次使用时会自动拷贝到 `~/.config/link-researcher/fetch-strategy.toml`。
 你可以修改本地副本来自定义覆盖（比如添加新的域名路由、调整降级顺序），仓库更新不会覆盖你的自定义配置。
 
+## 示例输出
+
+`references/examples/` 下有两份真实运行产出，可作为报告结构和质量的参考标杆：
+
+- [`report-openclaw-agent-ecosystem.md`](references/examples/report-openclaw-agent-ecosystem.md) — 17 条链接的 Agent 生态研究，多类型混合
+- [`report-misc-mixed-batch.md`](references/examples/report-misc-mixed-batch.md) — 5 条分散主题的小批量研究
+
+## Benchmark
+
+`evals/` 下包含 3 条评估用例，覆盖 skill 的核心使用场景。最近一次对照实验结果：
+
+| 配置 | 平均通过率 | 平均 tokens | 平均耗时 |
+|------|-----------|------------|----------|
+| **with_skill**     | **94.4%** (20/21) | 57,338 | 287.7s |
+| without_skill 裸跑 | 39.5% (8/21)      | 36,926 | 231.9s |
+
+通过率 **+55 个百分点**，token 开销约 +55%，耗时 +24%。skill 带来的核心增益是结构化的
+A/B/C 报告大纲、类型分组、分析卡模板差异化，以及「我的判断 + 建议后续行动」这两个
+baseline 完全没有的字段。详见 [`evals/README.md`](evals/README.md)。
+
 ## 配置
 
 首次使用时自动初始化 `~/.config/link-researcher/`：

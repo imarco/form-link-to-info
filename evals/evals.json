@@ -1,0 +1,23 @@
+{
+  "skill_name": "link-researcher",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "帮我研究这几个链接：\nhttps://github.com/Xiangyu-CAS/xiaohongshu-ops-skill\nhttps://www.xiaohongshu.com/explore/690b3acb00000000070394b5?xsec_token=ABKH2irtnAkawXzUmR7ZYoeYpwh11CRdCVwTCFXsFK4ZI%3D&xsec_source=pc_search\nhttps://mp.weixin.qq.com/s/QasNhxrIamBjgn5FYiuW0w",
+      "expected_output": "一份包含 A(研究总览) B(分类型逐条整理) C(研究结论) 的完整研究报告，3个链接分别使用项目分析卡、社媒分析卡、内容洞察卡模板，每个都有'我的判断'和'建议的后续行动'，无法访问的链接有醒目标注",
+      "files": []
+    },
+    {
+      "id": 2,
+      "prompt": "研究下面的链接，输出到 markdown 文件：\nhttps://github.com/anthropics/claude-code\nhttps://docs.anthropic.com/en/docs/agents-and-tools/claude-code/overview\nhttps://simonwillison.net/2025/Jan/24/claude-code/\nhttps://www.youtube.com/watch?v=bXVjGSMaJvg",
+      "expected_output": "一个 markdown 文件，包含完整研究报告。GitHub 仓库使用项目分析卡，文档使用学习价值卡，博客使用内容洞察卡，YouTube 视频使用视频分析卡。应有环境检测、Jina Reader 正文提取尝试",
+      "files": []
+    },
+    {
+      "id": 3,
+      "prompt": "帮我看看这些链接，输出成 prompt 模式，我要喂给 deepseek 做进一步整理：\nhttps://github.com/langgenius/dify\nhttps://github.com/n8n-io/n8n\nhttps://www.langchain.com/\nhttps://dify.ai/",
+      "expected_output": "一个可以直接复制粘贴给 DeepSeek 使用的 prompt，包含提取的正文摘要和结构化数据，控制在合理的 token 量内，有明确的任务指令",
+      "files": []
+    }
+  ]
+}
