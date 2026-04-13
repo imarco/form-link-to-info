@@ -1,17 +1,18 @@
 #!/bin/bash
 # Initialize default configuration for link-researcher skill
 
-CONFIG_DIR="$HOME/.config/link-researcher"
+CONFIG_DIR="$HOME/.config/linky"
 
 # Create directory structure
 mkdir -p "$CONFIG_DIR/personas"
 mkdir -p "$CONFIG_DIR/templates"
 mkdir -p "$CONFIG_DIR/good-shots"
+mkdir -p "$CONFIG_DIR/sessions"
 
 # Write default config if not exists
 if [ ! -f "$CONFIG_DIR/config.toml" ]; then
 cat > "$CONFIG_DIR/config.toml" << 'TOML'
-# Link Researcher 配置文件
+# Linky 配置文件
 # 修改此文件来自定义分析行为
 
 # 默认输出方式: "notion" | "markdown" | "multi-file" | "prompt"
@@ -136,8 +137,23 @@ if [ ! -f "$CONFIG_DIR/fetch-strategy.toml" ]; then
   fi
 fi
 
+# Write memory file if not exists
+if [ ! -f "$CONFIG_DIR/memory.md" ]; then
+cat > "$CONFIG_DIR/memory.md" << 'MD'
+# Linky Memory
+
+域名访问记录和 session 事件日志。由 skill 自动追加，用户可随时查阅。
+
+## Session Events
+
+## Domain Notes
+
+MD
+echo "Created memory file at $CONFIG_DIR/memory.md"
+fi
+
 echo ""
-echo "Link Researcher config initialized at $CONFIG_DIR"
+echo "Linky config initialized at $CONFIG_DIR"
 echo ""
 echo "Directory structure:"
 echo "  $CONFIG_DIR/"
@@ -148,4 +164,6 @@ echo "  │   └── default.md"
 echo "  ├── templates/             # 自定义分析卡模板"
 echo "  ├── good-shots/            # 优质输出示例"
 echo "  │   └── README.md"
+echo "  ├── sessions/              # 域名 session 缓存（自动管理）"
+echo "  ├── memory.md              # 访问记录和经验积累"
 echo "  └── preferences.md         # 累积偏好"

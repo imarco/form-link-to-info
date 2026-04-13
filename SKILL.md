@@ -1,5 +1,5 @@
 ---
-name: link-researcher
+name: linky
 description: >
   批量链接研究分析工具。当用户提供一批 URL 链接并希望进行研究、分析、分类、摘要时触发。
   适用场景包括：用户粘贴了一组链接要求分析、用户说"帮我研究这些链接"、用户分享了收藏夹/稍后阅读列表要求整理、
@@ -24,15 +24,17 @@ description: >
 
 ## 第一步：加载用户配置
 
-检查 `~/.config/link-researcher/` 是否存在。
+检查 `~/.config/linky/` 是否存在。
 
 - 如果存在，读取 `config.toml` 获取用户偏好（默认输出方式、自定义视角、特殊处理规则等）
 - 如果存在 `personas/` 下的文件，读取作为分析视角的补充
 - 如果存在 `templates/` 下的自定义模板，用它们覆盖默认模板
 - 如果存在 `good-shots/` 下的示例文件，作为各类型输出的参考标杆
+- 如果存在 `sessions/` 下的域名 session 文件，加载已保存的浏览器凭据（详见「Session 持久化」）
+- 如果存在 `memory.md`，读取历史经验和累积的域名访问记录
 - 如果不存在，运行 `scripts/init-config.sh` 初始化默认配置，并告知用户配置路径
 
-## 第二步：链接预处理
+## 第二步：链接预处理与域名分组
 
 1. 统计原始链接总数
 2. 去重（相同 URL 合并，注意 URL 参数差异不算重复）
@@ -44,7 +46,19 @@ description: >
    - 🛡️ 反爬但可穿透（微信公众号 `mp.weixin.qq.com` → Scrapling 可直接读取）
    - ⚠️ 可能无法直接抓取
    - 🔗 跳转/短链接
-5. 按域名分组，规划访问顺序（同域名连续访问更高效）
+5. **按域名分组生成访问计划（核心优化）**：
+   - 提取所有链接的域名，相同域名的链接归入同一 batch
+   - 每个 batch 内的链接共享同一个浏览器会话（复用 cookies、登录态）
+   - 检查 `~/.config/linky/sessions/{domain}.json` 是否存在已保存的 session 凭据
+   - 如果有已保存的 session，标记该 batch 为"有缓存凭据"，优先使用
+   - 访问计划示例：
+     ```
+     Batch 1: github.com (5 links) — Jina 直取
+     Batch 2: mp.weixin.qq.com (3 links) — Scrapling, 有缓存 session
+     Batch 3: xiaohongshu.com (2 links) — Browser, 需登录态
+     Batch 4: 散列域名 (4 links, 各1条) — 按标准降级链
+     ```
+   - 需要浏览器的 batch 放在最后处理（减少等待用户介入的次数）
 6. 如果用户声称的数量与去重后不一致，以实际为准并说明
 
 ## 第三步：正文提取
@@ -55,7 +69,7 @@ description: >
 
 采集策略定义在 `fetch-strategy.toml` 中，按以下优先级加载：
 
-1. **用户自定义**：`~/.config/link-researcher/fetch-strategy.toml`（如果存在，优先使用）
+1. **用户自定义**：`~/.config/linky/fetch-strategy.toml`（如果存在，优先使用）
 2. **仓库预设**：`references/fetch-strategy.toml`（默认策略，随仓库更新）
 
 策略文件包含：降级链定义、域名快捷路由、正文选择器、html2text 参数等。
@@ -69,17 +83,77 @@ description: >
 ### 执行流程
 
 ```
-输入链接
+输入链接（按域名 batch 逐批处理）
   │
   ├─ 已有预提取内容？ → 直接使用，跳到分类步骤
+  │
+  ├─ 该域名有缓存 session？ → 加载 ~/.config/linky/sessions/{domain}.json 中的凭据
   │
   ├─ 命中 domain_routes？ → 跳到指定方案（节省配额、避免已知失败）
   │
   └─ 按 fallback_chain 顺序依次尝试 → 成功即停止 → 全部失败则标记受限
+      │
+      └─ 当 fallback 到 browser 层并成功访问时 → 触发 Session 持久化（见下文）
 ```
 
 具体的降级链顺序、域名路由表、选择器配置等均由 `fetch-strategy.toml` 驱动，
 不在此处硬编码——方便用户根据实际采集经验持续迭代。
+
+### Session 持久化
+
+当 fallback chain 最终降级到浏览器层并成功获得页面内容时，**必须主动保存该域名的访问凭据**，
+以便下次访问同域名链接时直接复用，避免重复降级。
+
+#### 触发条件
+
+以下任一条件触发 session 保存：
+- fallback 到了 `browser` 层才成功（意味着轻量方案都失败了）
+- 用户手动在浏览器中完成了登录操作
+- 通过缓存 session 复用成功访问了一个之前失败的域名
+
+#### 保存内容
+
+保存到 `~/.config/linky/sessions/{domain}.json`：
+
+```json
+{
+  "domain": "xiaohongshu.com",
+  "captured_at": "2026-04-13T10:30:00+08:00",
+  "user_agent": "Mozilla/5.0 ...",
+  "cookies": [
+    {"name": "sessionid", "value": "...", "domain": ".xiaohongshu.com", "path": "/", "expires": ...}
+  ],
+  "local_storage": {
+    "key": "value"
+  },
+  "notes": "通过用户手动登录获取，有效期约 7 天"
+}
+```
+
+#### 采集方法
+
+使用当前活跃的浏览器工具提取凭据，按可用性选择：
+- **Chrome DevTools MCP**: `evaluate_script` 执行 `document.cookie`、`JSON.stringify(localStorage)`、`navigator.userAgent`
+- **Playwright MCP**: `browser_evaluate` 执行同样的 JS
+- 如果以上都不可用，至少保存 User-Agent 和可见的 cookie 信息
+
+#### 复用逻辑
+
+在第二步的域名分组阶段，检查 `sessions/` 目录：
+- 如果目标域名有 session 文件 → 在 Scrapling 或浏览器请求中注入 cookies 和 User-Agent
+- 如果 session 文件超过 7 天 → 标记为"可能过期"，仍然尝试使用，失败后重新获取
+- 成功复用时更新 `captured_at` 时间戳
+
+#### Memory 记录
+
+每次 session 保存或复用时，追加一条记录到 `~/.config/linky/memory.md`：
+
+```markdown
+- 2026-04-13: xiaohongshu.com — 首次获取 session，通过用户手动登录
+- 2026-04-13: xiaohongshu.com — 复用 session 成功，2/2 links accessed
+```
+
+这样用户可以回顾哪些域名需要定期更新登录态。
 
 ### Scrapling 环境准备
 
@@ -121,7 +195,7 @@ pip install scrapling html2text 2>/dev/null
 
 **每种类型使用专属的分析模板**，详见 `references/card-templates.md`。
 
-如果 `~/.config/link-researcher/good-shots/` 中有该类型的示例输出，以示例为标杆校准输出质量和风格。
+如果 `~/.config/linky/good-shots/` 中有该类型的示例输出，以示例为标杆校准输出质量和风格。
 
 关键点：
 - Git 仓库 → **项目分析卡**（技术栈、成熟度、核心能力、部署方式、进入门槛）
@@ -157,12 +231,15 @@ pip install scrapling html2text 2>/dev/null
 
 ## 第六步：分批策略
 
-如果链接总数超过 15 个：
-1. 按域名分组后，每批处理 10-15 个链接
-2. 同域名的链接放在同一批
-3. 每批开头说明本批处理了哪些链接（序号范围）
-4. 每批使用完全相同的标准，不允许后面的批次偷工减料
-5. 可以利用子代理并行处理不同批次（如果环境支持）
+**始终按域名分组处理**，无论链接总数多少：
+
+1. 第二步已经生成了域名分组的访问计划，此处按该计划执行
+2. 同域名的链接在同一个浏览器会话中连续处理——复用 cookies、登录态、连接
+3. 处理顺序：轻量方案可解决的 batch 先行，需要浏览器的 batch 最后（减少用户介入次数）
+4. 如果单个域名的链接超过 15 条，再拆分为子 batch
+5. 每批开头说明本批处理了哪些链接（域名 + 序号）
+6. 每批使用完全相同的标准，不允许后面的批次偷工减料
+7. 可以利用子代理并行处理**不同域名**的 batch（如果环境支持，但同域名 batch 必须串行）
 
 ## 第七步：组装报告
 
@@ -204,15 +281,18 @@ pip install scrapling html2text 2>/dev/null
 
 用户可以通过以下方式积累偏好：
 
-- 告诉你"记住这个格式"、"以后这类链接都这样处理" → 更新 `~/.config/link-researcher/` 中的对应文件
+- 告诉你"记住这个格式"、"以后这类链接都这样处理" → 更新 `~/.config/linky/` 中的对应文件
 - `config.toml` — 全局设置（默认输出方式、语言、分批大小等）
 - `personas/default.md` — 默认分析视角和关注点
 - `templates/` — 自定义某个类型的分析模板（覆盖默认）
 - `good-shots/` — 用户认可的优质输出示例，按类型命名（如 `github-repo.md`、`article.md`），作为后续输出的标杆
+- `sessions/` — 域名 session 凭据缓存（自动管理，用户无需手动编辑）
+- `memory.md` — 域名访问日志和经验积累（自动追加，用户可查阅）
 - `preferences.md` — 累积的零散偏好和特殊规则
 
 当用户表达偏好时（如"这个输出格式很好"、"以后都这样"），主动提议保存到配置中。
 当用户提供示例数据并表示满意时，提议保存到 `good-shots/`。
+当 fallback 到浏览器层成功访问时，自动保存 session 并记录到 memory。
 
 ## 质量检查清单
 

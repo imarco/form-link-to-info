@@ -1,7 +1,7 @@
 # fetch-strategy.toml — 网页内容采集策略
 #
 # 此文件定义了 link-researcher 的内容提取降级链、域名路由和工具配置。
-# 用户副本位于 ~/.config/link-researcher/fetch-strategy.toml
+# 用户副本位于 ~/.config/linky/fetch-strategy.toml
 # 随着采集经验积累可随时修改，也可同步回仓库作为社区默认值。
 #
 # 更新日志：
