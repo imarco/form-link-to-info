@@ -90,23 +90,16 @@ MD
 echo "Created default persona at $CONFIG_DIR/personas/default.md"
 fi
 
-# Write default preferences if not exists
-if [ ! -f "$CONFIG_DIR/preferences.md" ]; then
-cat > "$CONFIG_DIR/preferences.md" << 'MD'
-# 累积偏好
-
-这个文件记录用户在使用过程中积累的偏好和特殊规则。
-当用户说"记住这个"、"以后都这样处理"时，在这里添加条目。
-
-## 特殊处理规则
-
-## 格式偏好
-
-## 关注重点
-
-MD
-echo "Created preferences file at $CONFIG_DIR/preferences.md"
+# Migrate old preferences.md into memory.md if exists
+if [ -f "$CONFIG_DIR/preferences.md" ]; then
+  echo ""
+  echo "Note: preferences.md is deprecated — merge its content into memory.md manually."
+  echo "  Old: $CONFIG_DIR/preferences.md"
+  echo "  New: $CONFIG_DIR/memory.md (User Preferences / Analysis Rules sections)"
 fi
+
+# Create output-adapters directory
+mkdir -p "$CONFIG_DIR/output-adapters"
 
 # Write good-shots README if directory is empty
 if [ ! -f "$CONFIG_DIR/good-shots/README.md" ]; then
@@ -152,9 +145,11 @@ if [ ! -f "$CONFIG_DIR/memory.md" ]; then
 cat > "$CONFIG_DIR/memory.md" << 'MD'
 # Linky Memory
 
-通用记忆。用户偏好、账号汇总、全局经验。由 skill 自动维护 + 用户可编辑。
+唯一的通用记忆入口。由 skill 自动维护 + 用户可编辑。
 
 ## User Preferences
+
+## Analysis Rules
 
 ## Accounts
 
@@ -180,4 +175,4 @@ echo "  ├── good-shots/            # 优质输出示例"
 echo "  │   └── README.md"
 echo "  ├── sessions/              # 域名 session 凭据（自动管理）"
 echo "  ├── domains/               # 域名记忆（访问历史 + trace）"
-echo "  └── preferences.md         # 累积的分析偏好"
+echo "  └── output-adapters/       # 自定义输出适配器脚本"

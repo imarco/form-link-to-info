@@ -198,6 +198,7 @@ session_file: sessions/xiaohongshu.com.json
 - **Trace 格式**：`- {timestamp} | {path} | "{title}" | {一句话摘要}`
 - **登录状态变化时**：更新 `login_status` 和 `username`
 - 如果 `references/domain-metadata/{domain}.md` 存在预置元数据，首次创建时合并预置信息
+- **Trace 增长控制**：当 `## Access Trace` 超过 100 条时，保留最近 50 条，将更早的移入同文件的 `## Archived Traces`（用 `<details>` 折叠）。若归档也超过 500 条，截断并在头部注明总访问次数
 
 #### 域名记忆 vs Session 文件
 
@@ -374,14 +375,96 @@ pip install scrapling html2text 2>/dev/null
 - 这批链接整体反映出的趋势
 - 建议的后续研究路径
 
-## 第八步：选择输出方式
+## 第八步：输出
 
-询问用户期望的输出方式（如果 `config.toml` 中已配置默认方式则使用默认，但仍告知用户）：
+### 输出适配器架构
 
-1. **Notion** — 使用 Notion MCP 创建页面/数据库条目，详见 `references/output-formats.md`
-2. **单文件 Markdown** — 输出一个完整的 `.md` 文件
-3. **多文件 Markdown** — 按类型分文件夹，每个链接一个 `.md` 文件
-4. **Prompt 模式** — 生成一个通用的、结构良好的 prompt，包含提取的正文和分析结果，可直接喂给任意 AI 平台（豆包、DeepSeek、MiniMax 等）完成后续任务（如翻译、改写、二次整理等）。不做平台特定适配，依赖目标平台自身能力
+报告生成与输出投递是**解耦**的。skill 先生成报告（markdown），然后通过适配器脚本投递到目标。
+这样做的好处：同一份报告可以投递到多个目标，且适配器是脚本不是 AI 推理，不浪费 token。
+
+```
+报告生成（AI） → 保存到工作目录 → 适配器 1（脚本） → 目标 1
+                                 → 适配器 2（脚本） → 目标 2
+                                 → ...
+```
+
+### 内置适配器
+
+| 适配器 | 脚本 | 说明 |
+|---|---|---|
+| **filesystem** | `scripts/adapters/filesystem.py` | 复制到本地文件夹（默认 `~/Documents/linky-reports/`） |
+| **obsidian** | `scripts/adapters/obsidian.py` | 写入 Obsidian vault，自动添加 frontmatter |
+| **notion** | `scripts/adapters/notion.py` | 生成 Notion payload JSON，由 skill 调用 Notion MCP 投递 |
+| **yinxiang** | `scripts/adapters/yinxiang.py` | 转 ENML 调用印象笔记 API，失败时 fallback 生成 .enex 文件 |
+| **custom API** | 用户自建，放 `~/.config/linky/output-adapters/` | 按 `api_template.py` 模板编写 |
+
+每个适配器的调用方式统一：
+```bash
+python3 scripts/adapters/{name}.py <report_path> --config '<json>'
+```
+
+### 输出流程
+
+1. **生成报告**：将报告写入工作目录（临时 markdown 文件/目录）
+2. **确定目标**：
+   - 如果 `config.toml` 有 `[output]` 默认配置 → 使用默认，告知用户
+   - 如果用户本次指定了目标 → 使用用户指定的
+   - 如果都没有 → 询问用户
+   - 用户可以指定**多个目标**（如 "输出到 Obsidian 和 Notion"）
+3. **依次投递**：按顺序调用每个目标的适配器脚本
+4. **报告结果**：显示每个目标的投递状态
+
+### 适配器配置
+
+在 `config.toml` 中配置默认输出和各适配器参数：
+
+```toml
+[output]
+# 默认目标（可以是数组表示多重输出）
+default = ["obsidian"]
+
+[output.obsidian]
+vault_path = "~/Library/Mobile Documents/iCloud~md~obsidian/Documents/brain"
+target_folder = "inbox"   # 留空则让 AI 自己判断应放到哪个文件夹
+add_frontmatter = true
+
+[output.notion]
+database_id = ""          # 首次使用时设定，保存下来后续复用
+
+[output.yinxiang]
+notebook = "Research"
+tags = ["linky", "research"]
+# token 通过环境变量 YINXIANG_TOKEN 传入，不写在配置文件中
+
+[output.filesystem]
+output_dir = "~/Documents/linky-reports"
+```
+
+### 自定义 API 适配器
+
+用户可以在 `~/.config/linky/output-adapters/` 中放入自定义脚本：
+
+1. 复制 `scripts/adapters/api_template.py` 到 `~/.config/linky/output-adapters/my-api.py`
+2. 修改脚本适配目标 API
+3. 在 `config.toml` 中配置：
+   ```toml
+   [output.my-api]
+   adapter_script = "~/.config/linky/output-adapters/my-api.py"
+   endpoint = "https://api.example.com/notes"
+   api_key_env = "MY_API_KEY"
+   ```
+
+也可以不写脚本——如果用户贴入了 API 文档，AI 应该：
+1. 阅读 API 文档，理解 endpoint 和参数格式
+2. 编写适配器脚本
+3. 保存到 `~/.config/linky/output-adapters/` 并更新 `config.toml`
+4. 后续调用直接走脚本，不再浪费 AI token
+
+### Prompt 模式
+
+除了适配器投递，还支持 **Prompt 模式**——生成一个结构良好的 prompt + 数据包，
+可直接喂给任意 AI 平台（豆包、DeepSeek、MiniMax 等）完成后续任务。
+这不是适配器（不涉及 API 调用），而是一种输出格式选项。
 
 输出格式的详细规范见 `references/output-formats.md`。
 
@@ -394,11 +477,11 @@ pip install scrapling html2text 2>/dev/null
 ├── config.toml              # 全局设置（输出方式、语言、分批大小等）
 ├── user-profile.toml        # 用户注册偏好（用户名、邮箱、头像等）
 ├── fetch-strategy.toml      # 采集策略（覆盖仓库默认）
-├── memory.md                # 通用记忆（用户偏好、账号汇总、要求记住的事）
-├── preferences.md           # 累积的分析偏好和特殊规则
+├── memory.md                # 唯一的通用记忆入口（偏好、账号、规则、心得）
 ├── personas/                # 分析视角
 ├── templates/               # 自定义分析卡模板
 ├── good-shots/              # 优质输出示例
+├── output-adapters/         # 用户自定义的输出适配器脚本
 ├── sessions/                # 域名 session 凭据缓存（机器管理）
 │   ├── xiaohongshu.com.json
 │   └── ...
@@ -410,18 +493,20 @@ pip install scrapling html2text 2>/dev/null
 
 ### memory.md 的定位
 
-`memory.md` 是**通用记忆**，不存储域名细节（那些在 `domains/` 里），而是存储：
-
-- **用户偏好**：用户说"记住这个"、"以后都这样"时记录在这里
-- **账号汇总**：所有注册过的平台和对应用户名的索引
-- **全局心得**：跨域名的经验教训（如"微信公众号周末限流更严重"）
+`memory.md` 是**唯一的通用记忆入口**——所有非域名特定的信息都存在这一个文件里。
+不要往其他文件写用户偏好，避免信息分散。
 
 ```markdown
 # Linky Memory
 
 ## User Preferences
-- 偏好输出格式: markdown
+- 偏好输出格式: markdown → obsidian
 - 分析侧重: 技术视角为主
+- 以后 GitHub 仓库都多写一点部署方式的分析
+
+## Analysis Rules
+- 公众号文章不用分析"投资视角"
+- 工具类链接关注是否有 self-host 选项
 
 ## Accounts
 - xiaohongshu.com: marco_dev (2026-04-13 注册)
@@ -433,11 +518,13 @@ pip install scrapling html2text 2>/dev/null
 
 ### 积累机制
 
-- 用户说"记住这个格式"、"以后这类链接都这样处理" → 写入 `memory.md` 或 `preferences.md`
+- 用户说"记住这个格式"、"以后都这样" → 写入 `memory.md`
+- 用户说"这类链接要这样处理" → 写入 `memory.md` 的 Analysis Rules
 - 成功访问某域名 → 更新 `domains/{domain}.md` 的 trace
 - 注册新账号 → 更新 `domains/{domain}.md` + `memory.md` 的 Accounts 区域
 - 用户认可某个输出 → 保存到 `good-shots/`
 - fallback 到浏览器层成功 → 保存 `sessions/{domain}.json` + 更新域名记忆
+- 用户贴入 API 文档要求定制输出 → 编写脚本到 `output-adapters/` + 更新 `config.toml`
 
 ## 质量检查清单
 
