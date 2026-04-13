@@ -8,6 +8,7 @@ mkdir -p "$CONFIG_DIR/personas"
 mkdir -p "$CONFIG_DIR/templates"
 mkdir -p "$CONFIG_DIR/good-shots"
 mkdir -p "$CONFIG_DIR/sessions"
+mkdir -p "$CONFIG_DIR/domains"
 
 # Write default config if not exists
 if [ ! -f "$CONFIG_DIR/config.toml" ]; then
@@ -137,16 +138,27 @@ if [ ! -f "$CONFIG_DIR/fetch-strategy.toml" ]; then
   fi
 fi
 
+# Copy user-profile template if not exists
+if [ ! -f "$CONFIG_DIR/user-profile.toml" ]; then
+  SKILL_DIR="$(cd "$(dirname "$0")/.." && pwd)"
+  if [ -f "$SKILL_DIR/references/user-profile-template.toml" ]; then
+    cp "$SKILL_DIR/references/user-profile-template.toml" "$CONFIG_DIR/user-profile.toml"
+    echo "Created user profile at $CONFIG_DIR/user-profile.toml"
+  fi
+fi
+
 # Write memory file if not exists
 if [ ! -f "$CONFIG_DIR/memory.md" ]; then
 cat > "$CONFIG_DIR/memory.md" << 'MD'
 # Linky Memory
 
-域名访问记录和 session 事件日志。由 skill 自动追加，用户可随时查阅。
+通用记忆。用户偏好、账号汇总、全局经验。由 skill 自动维护 + 用户可编辑。
 
-## Session Events
+## User Preferences
 
-## Domain Notes
+## Accounts
+
+## Global Notes
 
 MD
 echo "Created memory file at $CONFIG_DIR/memory.md"
@@ -158,12 +170,14 @@ echo ""
 echo "Directory structure:"
 echo "  $CONFIG_DIR/"
 echo "  ├── config.toml            # 全局设置"
+echo "  ├── user-profile.toml      # 注册偏好（用户名、邮箱等）"
 echo "  ├── fetch-strategy.toml    # 采集策略（覆盖仓库默认）"
+echo "  ├── memory.md              # 通用记忆（偏好、账号、经验）"
 echo "  ├── personas/              # 分析视角"
 echo "  │   └── default.md"
 echo "  ├── templates/             # 自定义分析卡模板"
 echo "  ├── good-shots/            # 优质输出示例"
 echo "  │   └── README.md"
-echo "  ├── sessions/              # 域名 session 缓存（自动管理）"
-echo "  ├── memory.md              # 访问记录和经验积累"
-echo "  └── preferences.md         # 累积偏好"
+echo "  ├── sessions/              # 域名 session 凭据（自动管理）"
+echo "  ├── domains/               # 域名记忆（访问历史 + trace）"
+echo "  └── preferences.md         # 累积的分析偏好"

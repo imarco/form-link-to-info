@@ -27,12 +27,23 @@ description: >
 检查 `~/.config/linky/` 是否存在。
 
 - 如果存在，读取 `config.toml` 获取用户偏好（默认输出方式、自定义视角、特殊处理规则等）
+- 如果存在 `user-profile.toml`，加载用户注册偏好（用户名、邮箱、头像路径等）
 - 如果存在 `personas/` 下的文件，读取作为分析视角的补充
 - 如果存在 `templates/` 下的自定义模板，用它们覆盖默认模板
 - 如果存在 `good-shots/` 下的示例文件，作为各类型输出的参考标杆
 - 如果存在 `sessions/` 下的域名 session 文件，加载已保存的浏览器凭据（详见「Session 持久化」）
-- 如果存在 `memory.md`，读取历史经验和累积的域名访问记录
+- 如果存在 `domains/` 下的域名记忆文件，加载历史域名访问信息
+- 如果存在 `memory.md`，读取通用记忆（用户偏好、要求记住的事情、全局信息）
 - 如果不存在，运行 `scripts/init-config.sh` 初始化默认配置，并告知用户配置路径
+
+### 域名知识加载
+
+对于本次涉及的每个域名，按以下优先级加载域名知识：
+
+1. **用户积累**：`~/.config/linky/domains/{domain}.md`（优先，包含登录状态、历史访问等）
+2. **仓库预设**：`references/domain-metadata/{domain}.md`（内置的常用网站元数据）
+
+仓库预设提供网站的基本信息（类型、反爬特征、最佳采集策略等），用户积累在其基础上叠加个人信息（登录状态、使用的账号等）。
 
 ## 第二步：链接预处理与域名分组
 
@@ -91,9 +102,13 @@ description: >
   │
   ├─ 命中 domain_routes？ → 跳到指定方案（节省配额、避免已知失败）
   │
-  └─ 按 fallback_chain 顺序依次尝试 → 成功即停止 → 全部失败则标记受限
+  └─ 按 fallback_chain 顺序依次尝试
       │
-      └─ 当 fallback 到 browser 层并成功访问时 → 触发 Session 持久化（见下文）
+      ├─ 成功 → 记录 trace + 更新域名记忆（见下文）
+      │
+      ├─ 遇到注册墙 → 加入 pending 队列，继续下一条（见「注册处理」）
+      │
+      └─ fallback 到 browser 层成功 → 触发 Session 持久化 + 记录 trace
 ```
 
 具体的降级链顺序、域名路由表、选择器配置等均由 `fetch-strategy.toml` 驱动，
@@ -144,16 +159,109 @@ description: >
 - 如果 session 文件超过 7 天 → 标记为"可能过期"，仍然尝试使用，失败后重新获取
 - 成功复用时更新 `captured_at` 时间戳
 
-#### Memory 记录
+### 域名记忆
 
-每次 session 保存或复用时，追加一条记录到 `~/.config/linky/memory.md`：
+每次成功访问一个链接后，更新该域名的记忆文件 `~/.config/linky/domains/{domain}.md`。
+
+#### 域名记忆文件格式
 
 ```markdown
-- 2026-04-13: xiaohongshu.com — 首次获取 session，通过用户手动登录
-- 2026-04-13: xiaohongshu.com — 复用 session 成功，2/2 links accessed
+---
+domain: xiaohongshu.com
+type: social-media
+login_status: logged_in
+username: marco_dev
+last_accessed: 2026-04-13
+session_file: sessions/xiaohongshu.com.json
+---
+
+# xiaohongshu.com
+
+## Status
+- 登录状态: 已登录 (marco_dev)
+- 采集策略: browser (需登录态)
+- Session 有效期: ~7 天
+
+## Access Trace
+- 2026-04-13 10:30 | /explore/item-123 | "如何用 AI 做设计" | 产品设计文章，介绍 AI 辅助 UI 设计工作流
+- 2026-04-13 10:31 | /explore/item-456 | "Claude Code 实战" | 开发教程，讲解 Claude Code 的高级用法
+
+## Notes
+- 反爬严格，只有浏览器自动化能访问
+- 图片有防盗链，需要带 referer
 ```
 
-这样用户可以回顾哪些域名需要定期更新登录态。
+#### 写入规则
+
+- **首次访问某域名时**：创建域名记忆文件，填入基本信息 + 第一条 trace
+- **再次访问时**：追加 trace 记录，更新 `last_accessed`
+- **Trace 格式**：`- {timestamp} | {path} | "{title}" | {一句话摘要}`
+- **登录状态变化时**：更新 `login_status` 和 `username`
+- 如果 `references/domain-metadata/{domain}.md` 存在预置元数据，首次创建时合并预置信息
+
+#### 域名记忆 vs Session 文件
+
+| 文件 | 内容 | 谁管理 |
+|---|---|---|
+| `domains/{domain}.md` | 人类可读的域名知识：登录状态、访问历史、使用心得 | Skill 自动写 + 用户可编辑 |
+| `sessions/{domain}.json` | 机器可读的凭据：cookies、UA、localStorage | Skill 自动管理，用户不应手动编辑 |
+
+### 注册处理
+
+当访问某个链接发现需要注册才能查看内容时，不要立即中断流程。
+
+#### 判断注册墙
+
+以下信号表明遇到了注册墙：
+- 页面内容被遮挡，提示"登录/注册后查看"
+- 返回 401/403 且页面有注册入口
+- 内容被截断，底部有"查看全文请登录"
+- 页面重定向到登录/注册页面
+
+#### 处理流程
+
+```
+遇到注册墙
+  │
+  ├─ 该域名有 session 缓存？ → 尝试复用 → 成功则继续 → 失败则 session 过期，走下面
+  │
+  └─ 无 session 或 session 过期
+      │
+      ├─ 加入 pending 队列：记录 URL、域名、需要的操作（注册/登录）
+      │
+      └─ 继续处理其他链接（不阻塞）
+```
+
+#### Pending 队列
+
+在整个 batch 处理完成后，如果存在 pending 项，统一呈现给用户：
+
+```markdown
+## 🔒 需要注册/登录的链接（共 3 个，涉及 2 个平台）
+
+### 1. xiaohongshu.com (2 links pending)
+- /explore/item-789 — "AI Agent 工作流设计"
+- /explore/item-012 — "MCP Server 最佳实践"
+**操作**: 需要登录。我来打开登录页面？
+
+### 2. newplatform.io (1 link pending, 需注册)
+- /blog/advanced-rag — "Advanced RAG Patterns"
+**操作**: 需要新注册。我来打开注册页面并预填信息？
+```
+
+#### 注册辅助
+
+当用户确认要注册时：
+
+1. 读取 `~/.config/linky/user-profile.toml` 获取用户偏好的注册信息
+2. 打开注册页面（使用浏览器工具）
+3. 预填可预填的字段（用户名、邮箱、显示名等）
+4. 提醒用户完成剩余步骤（密码、验证码、邮箱确认等）
+5. 用户完成注册后：
+   - 保存 session 凭据到 `sessions/{domain}.json`
+   - 更新域名记忆 `domains/{domain}.md`（标记为已注册、记录用户名）
+   - 回头处理该域名的 pending 链接
+6. 将新注册的账号信息追加到 `memory.md` 的 `## Accounts` 区域
 
 ### Scrapling 环境准备
 
@@ -279,25 +387,62 @@ pip install scrapling html2text 2>/dev/null
 
 ## 配置进化
 
-用户可以通过以下方式积累偏好：
+`~/.config/linky/` 完整目录结构：
 
-- 告诉你"记住这个格式"、"以后这类链接都这样处理" → 更新 `~/.config/linky/` 中的对应文件
-- `config.toml` — 全局设置（默认输出方式、语言、分批大小等）
-- `personas/default.md` — 默认分析视角和关注点
-- `templates/` — 自定义某个类型的分析模板（覆盖默认）
-- `good-shots/` — 用户认可的优质输出示例，按类型命名（如 `github-repo.md`、`article.md`），作为后续输出的标杆
-- `sessions/` — 域名 session 凭据缓存（自动管理，用户无需手动编辑）
-- `memory.md` — 域名访问日志和经验积累（自动追加，用户可查阅）
-- `preferences.md` — 累积的零散偏好和特殊规则
+```
+~/.config/linky/
+├── config.toml              # 全局设置（输出方式、语言、分批大小等）
+├── user-profile.toml        # 用户注册偏好（用户名、邮箱、头像等）
+├── fetch-strategy.toml      # 采集策略（覆盖仓库默认）
+├── memory.md                # 通用记忆（用户偏好、账号汇总、要求记住的事）
+├── preferences.md           # 累积的分析偏好和特殊规则
+├── personas/                # 分析视角
+├── templates/               # 自定义分析卡模板
+├── good-shots/              # 优质输出示例
+├── sessions/                # 域名 session 凭据缓存（机器管理）
+│   ├── xiaohongshu.com.json
+│   └── ...
+└── domains/                 # 域名记忆（人类可读的域名知识）
+    ├── github.com.md
+    ├── xiaohongshu.com.md
+    └── ...
+```
 
-当用户表达偏好时（如"这个输出格式很好"、"以后都这样"），主动提议保存到配置中。
-当用户提供示例数据并表示满意时，提议保存到 `good-shots/`。
-当 fallback 到浏览器层成功访问时，自动保存 session 并记录到 memory。
+### memory.md 的定位
+
+`memory.md` 是**通用记忆**，不存储域名细节（那些在 `domains/` 里），而是存储：
+
+- **用户偏好**：用户说"记住这个"、"以后都这样"时记录在这里
+- **账号汇总**：所有注册过的平台和对应用户名的索引
+- **全局心得**：跨域名的经验教训（如"微信公众号周末限流更严重"）
+
+```markdown
+# Linky Memory
+
+## User Preferences
+- 偏好输出格式: markdown
+- 分析侧重: 技术视角为主
+
+## Accounts
+- xiaohongshu.com: marco_dev (2026-04-13 注册)
+- juejin.cn: marco-dev (已有账号)
+
+## Global Notes
+- 微信公众号周末反爬更严格，工作日 Scrapling 成功率更高
+```
+
+### 积累机制
+
+- 用户说"记住这个格式"、"以后这类链接都这样处理" → 写入 `memory.md` 或 `preferences.md`
+- 成功访问某域名 → 更新 `domains/{domain}.md` 的 trace
+- 注册新账号 → 更新 `domains/{domain}.md` + `memory.md` 的 Accounts 区域
+- 用户认可某个输出 → 保存到 `good-shots/`
+- fallback 到浏览器层成功 → 保存 `sessions/{domain}.json` + 更新域名记忆
 
 ## 质量检查清单
 
 完成报告前自检：
-- [ ] 每个链接都已纳入报告（包括无法访问的）
+- [ ] 每个链接都已纳入报告（包括无法访问的和 pending 的）
 - [ ] 每个链接都尝试了正文提取（已有预提取内容的除外）
 - [ ] 不同类型使用了不同的分析模板
 - [ ] 每个条目都有"我的判断"和"建议的后续行动"
@@ -306,3 +451,6 @@ pip install scrapling html2text 2>/dev/null
 - [ ] 组内按研究价值排序
 - [ ] 无法访问的链接有醒目标注
 - [ ] 研究结论部分有实质性洞察
+- [ ] 所有访问过的域名都更新了 `domains/{domain}.md`（含 trace）
+- [ ] 需要注册的链接已呈现给用户并标注 pending 状态
+- [ ] 新获取的 session 已保存到 `sessions/`
