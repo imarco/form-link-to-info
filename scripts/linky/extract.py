@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import time
+import shlex
+import subprocess
 import urllib.request
 from pathlib import Path
 from typing import Any, Callable
@@ -43,11 +45,38 @@ def _scrapling_provider(url: str, provider: dict[str, Any], strategy: dict[str, 
     return {"markdown": markdown, "metadata": {"provider": "scrapling"}}
 
 
+def _command_provider(url: str, provider: dict[str, Any], strategy: dict[str, Any]) -> dict[str, Any]:
+    command = provider.get("command")
+    if not command:
+        raise RuntimeError(f"provider {provider.get('id', 'unknown')} has no command")
+
+    max_chars = int(strategy.get("global", {}).get("max_chars", 30000))
+    skill_dir = Path(__file__).resolve().parents[2]
+    rendered = (
+        command.replace("{url}", shlex.quote(url))
+        .replace("{max_chars}", str(max_chars))
+        .replace("{skill_dir}", shlex.quote(str(skill_dir)))
+    )
+    proc = subprocess.run(
+        rendered,
+        shell=True,
+        check=False,
+        text=True,
+        capture_output=True,
+        timeout=int(strategy.get("global", {}).get("timeout_seconds", 15)),
+    )
+    if proc.returncode != 0:
+        message = proc.stderr.strip() or proc.stdout.strip() or f"command exited {proc.returncode}"
+        raise RuntimeError(message)
+    return {"markdown": proc.stdout[:max_chars], "metadata": {"command": rendered}}
+
+
 BUILTIN_PROVIDERS: dict[str, ProviderFn] = {
     "jina": lambda url, provider, strategy: {"markdown": _http_markdown(url, provider, strategy), "metadata": {}},
     "webfetch": lambda url, provider, strategy: {"markdown": _http_markdown(url, provider, strategy), "metadata": {}},
     "trafilatura": _trafilatura_provider,
     "scrapling": _scrapling_provider,
+    "browser": _command_provider,
 }
 
 

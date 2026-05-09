@@ -19,6 +19,10 @@ scrapling_fetch.py — 使用 Scrapling + html2text 提取网页正文
 import sys
 from pathlib import Path
 
+SCRIPT_DIR = Path(__file__).resolve().parent
+if str(SCRIPT_DIR) not in sys.path:
+    sys.path.insert(0, str(SCRIPT_DIR))
+
 def fetch_and_extract(url: str, max_chars: int = 30000) -> str:
     """使用 Scrapling 抓取页面，html2text 转为 Markdown。
 
@@ -28,7 +32,7 @@ def fetch_and_extract(url: str, max_chars: int = 30000) -> str:
     from linky.providers.scrapling import fetch_and_extract as _fetch_and_extract
     from linky.strategy import load_strategy
 
-    strategy_path = Path(__file__).resolve().parents[1] / "references" / "fetch-strategy.toml"
+    strategy_path = SCRIPT_DIR.parent / "references" / "fetch-strategy.toml"
     strategy = load_strategy(strategy_path)
     return _fetch_and_extract(url, max_chars, strategy)
 
