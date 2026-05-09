@@ -1,6 +1,8 @@
 # 输出格式指南
 
-用户可以选择四种输出方式。默认方式可通过 `~/.config/link-researcher/config.toml` 的 `default_output` 字段配置。
+用户可以选择四种输出方式。默认方式可通过 `~/.config/linky/config.toml` 的 `default_output` 字段配置。
+
+所有输出格式都应从结构化 `ReportData` 渲染，而不是各自重新解析 Markdown。这样可以保证 Markdown、Notion、Obsidian 和 Prompt 模式看到同一组字段：名称、URL、类型、访问状态、一句话结论、我的判断、建议行动、trace 摘要和研究价值。
 
 ---
 
