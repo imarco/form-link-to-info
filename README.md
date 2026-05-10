@@ -1,6 +1,6 @@
-# form-link-to-info
+# linky
 
-批量链接研究分析工具 —— Claude Code Skill。
+批量链接研究分析工具 —— Claude Code / Codex Skill。
 
 给一批 URL，自动逐个访问、提取正文、判断类型、按不同模板生成结构化分析报告。
 
@@ -15,10 +15,10 @@
 
 ## 安装
 
-### Claude Code
+### Claude Code / Codex
 
 ```bash
-claude install-skill https://github.com/imarco/form-link-to-info
+npx skills add -y -g https://github.com/imarco/linky
 ```
 
 ## 使用
