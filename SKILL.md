@@ -22,6 +22,21 @@ description: >
 - **多视角分析**：综合技术、产品、投资、内容创作等视角，根据内容类型侧重不同角度
 - **成本意识**：能用轻量工具完成的不用重量级工具，能批量的不逐条处理
 
+## 本地流水线架构
+
+Linky 是本地优先的研究流水线，不是线上服务。默认执行路径：
+
+1. **Input normalization**：解析 URL、去重、识别用户预提取正文
+2. **Domain plan**：按域名分 batch，加载 domain metadata、session 和 domain route
+3. **Extraction**：按 `fetch-strategy.toml` 的 provider fallback 执行，输出 `ExtractionResult`
+4. **Classification**：基于 URL、metadata、正文和域名知识判断主类型
+5. **Autoresearch loop**：`plan → extract/analyze → critique → gap detection → optional补采 → final synthesis`
+6. **Lightweight graph**：构建 JSON `ResearchGraph`，记录 `url/document/entity/topic/claim/action` 节点
+7. **Report assembly**：先形成结构化 `ReportData`，再渲染 Markdown A/B/C 报告
+8. **Output adapter**：用脚本投递到 filesystem、Obsidian、Notion、Yinxiang 或 prompt 模式
+
+Firecrawl、Crawl4AI、GraphRAG、GPT Researcher 等项目只作为 `refs/` 下的本地架构参考。Firecrawl 不是默认 runtime dependency，除非用户未来显式配置对应 provider。
+
 ## 第一步：加载用户配置
 
 检查 `~/.config/linky/` 是否存在。
@@ -83,7 +98,7 @@ description: >
 1. **用户自定义**：`~/.config/linky/fetch-strategy.toml`（如果存在，优先使用）
 2. **仓库预设**：`references/fetch-strategy.toml`（默认策略，随仓库更新）
 
-策略文件包含：降级链定义、域名快捷路由、正文选择器、html2text 参数等。
+策略文件包含：provider fallback、域名快捷路由、正文选择器、质量阈值、trace 输出、research loop 和 graph 输出等。
 用户可修改自己的副本来覆盖仓库默认值（增删域名路由、调整降级顺序、自定义选择器等）。
 
 ### 环境检测
@@ -104,7 +119,9 @@ description: >
   │
   └─ 按 fallback_chain 顺序依次尝试
       │
-      ├─ 成功 → 记录 trace + 更新域名记忆（见下文）
+      ├─ 成功且质量达标 → 写入 ExtractionResult/ExtractionTrace + 更新域名记忆（见下文）
+      │
+      ├─ 成功但质量低 → 记录 low_quality 并继续 fallback
       │
       ├─ 遇到注册墙 → 加入 pending 队列，继续下一条（见「注册处理」）
       │
@@ -113,6 +130,32 @@ description: >
 
 具体的降级链顺序、域名路由表、选择器配置等均由 `fetch-strategy.toml` 驱动，
 不在此处硬编码——方便用户根据实际采集经验持续迭代。
+
+### ExtractionResult / ExtractionTrace
+
+每条 URL 的抽取结果都应形成结构化中间数据：
+
+- `ExtractionResult`：`url/status/provider/markdown/metadata/quality/trace/errors`
+- `ExtractionTrace`：provider 尝试列表、耗时、失败原因、fallback 原因、最终来源、质量分
+
+本地 trace 默认写入 `.linky/runs/{run-id}/`，该目录不进入 git。
+
+### Autoresearch loop
+
+正文抽取和初步分析后，进入轻量迭代研究循环：
+
+1. `plan`：确认当前链接需要回答的核心问题
+2. `extract/analyze`：基于正文和 metadata 生成初步分析
+3. `critique`：检查缺失信息、过度推断、无法支撑的结论
+4. `gap detection`：列出需要补采的官网、docs、repo、pricing、作者主页或相关链接
+5. `optional补采`：在 link budget 内补采；超过预算则记录缺口
+6. `final synthesis`：把证据、缺口和判断合并进 `ReportData`
+
+### Lightweight ResearchGraph
+
+第一阶段只构建本地 JSON 图，不使用图数据库、向量库或完整 GraphRAG。节点类型限定为：
+`url/document/entity/topic/claim/action`；边类型限定为：
+`mentions/relates_to/supports/cites/follow_up/same_domain`。
 
 ### Session 持久化
 
@@ -147,10 +190,16 @@ description: >
 
 #### 采集方法
 
-使用当前活跃的浏览器工具提取凭据，按可用性选择：
-- **Chrome DevTools MCP**: `evaluate_script` 执行 `document.cookie`、`JSON.stringify(localStorage)`、`navigator.userAgent`
-- **Playwright MCP**: `browser_evaluate` 执行同样的 JS
-- 如果以上都不可用，至少保存 User-Agent 和可见的 cookie 信息
+使用 `playwright-cli` 提取凭据（比 MCP 方式省 ~4x token）：
+
+```bash
+# 确保页面已打开（playwright-cli open <url> 或 --persistent 模式）
+playwright-cli eval "document.cookie"
+playwright-cli eval "JSON.stringify(localStorage)"
+playwright-cli eval "navigator.userAgent"
+```
+
+如果 `playwright-cli` 不可用，fallback 到可用的浏览器 MCP 工具（Chrome DevTools / Playwright MCP 等）执行同样的 JS。
 
 #### 复用逻辑
 
@@ -255,8 +304,8 @@ session_file: sessions/xiaohongshu.com.json
 当用户确认要注册时：
 
 1. 读取 `~/.config/linky/user-profile.toml` 获取用户偏好的注册信息
-2. 打开注册页面（使用浏览器工具）
-3. 预填可预填的字段（用户名、邮箱、显示名等）
+2. 打开注册页面：`playwright-cli open <注册URL> --headed`（使用 `--headed` 让用户可见）
+3. 预填可预填的字段：`playwright-cli fill <selector> <value>`（用户名、邮箱、显示名等）
 4. 提醒用户完成剩余步骤（密码、验证码、邮箱确认等）
 5. 用户完成注册后：
    - 保存 session 凭据到 `sessions/{domain}.json`

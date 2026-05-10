@@ -1,3 +1,14 @@
 
 # Claurai ecosystem runtime state (worklog, pipeline, planning)
 .claurai/
+
+# Local reference repositories for architecture research
+refs/
+
+# Local Linky run artifacts (trace files, fixture outputs, debug sessions)
+.linky/
+
+# Local OS/Python noise
+.DS_Store
+__pycache__/
+*.py[cod]
