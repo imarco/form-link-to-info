@@ -4,6 +4,16 @@
 
 给一批 URL，自动逐个访问、提取正文、判断类型、按不同模板生成结构化分析报告。
 
+## 授权边界
+
+Linky 是用户授权的阅读与研究自动化工具。它只处理公开内容，或用户本人已经能在自己的浏览器中正常看到的内容。
+浏览器能力用于减少打开页面、读取可见正文、整理笔记和归档报告等重复操作。
+
+如果页面对用户不可见，或需要额外授权、付费、验证码、加入组织、切换账号等人工确认，Linky 会把链接标记为受限或 pending，
+不会尝试获取用户无权查看的内容。
+
+GPT/Codex 之间的安全调用边界见 [`references/gpt-safe-contract.md`](references/gpt-safe-contract.md)。
+
 ## 功能
 
 - **正文提取**：Jina Reader → Trafilatura → Scrapling + html2text → WebFetch → 浏览器自动化，多级降级策略
@@ -59,7 +69,7 @@ https://dify.ai/
 Linky 仍然是本地优先的 Skill 工具，不是线上服务。当前架构分为：
 
 1. **输入归一化**：解析 URL、去重、识别用户预提取正文。
-2. **域名计划**：按域名分 batch，加载 domain metadata、session 和 domain route。
+2. **域名计划**：按域名分 batch，加载 domain metadata、授权上下文和 domain route。
 3. **Extraction**：按 `fetch-strategy.toml` 的 provider fallback 执行，输出 `ExtractionResult` 和 `ExtractionTrace`。
 4. **Classification**：基于 URL、metadata、正文和域名知识判断主类型。
 5. **Autoresearch loop**：执行 `plan → extract/analyze → critique → gap detection → optional补采 → final synthesis`，用于发现缺口和补采。

@@ -71,8 +71,8 @@ name = "Scrapling + html2text"
 method = "bash"                         # 通过 Bash 调用 Python 脚本
 command = "python3 {skill_dir}/scripts/scrapling_fetch.py {url} {max_chars}"
 daily_limit = 0                         # 无限制
-best_for = "Jina 超限后的通用替代、微信公众号、反爬平台"
-notes = "效果接近 Jina，无次数限制，能绕过 Cloudflare 等反爬。必须用 html2text 转 Markdown"
+best_for = "Jina 超限后的通用替代、微信公众号、动态公开页面"
+notes = "用于公开正文抽取和页面结构解析。必须用 html2text 转 Markdown"
 requires = ["scrapling", "html2text"]   # pip 依赖
 
 [[fallback_chain]]
@@ -90,7 +90,7 @@ name = "Playwright CLI 浏览器自动化"
 method = "bash"                         # 通过 Bash 调用 playwright-cli（不再走 MCP）
 command = "playwright-cli open {url} && playwright-cli snapshot"
 daily_limit = 0
-best_for = "需要登录态、极端反爬、JS 重度渲染页面"
+best_for = "用户本人浏览器中可见的动态渲染页面"
 notes = "比 MCP 省 ~4x token（不加载 accessibility tree 到 context）。需要 npm install -g @playwright/cli"
 requires = ["playwright-cli"]           # npm 全局依赖
 # 常用 playwright-cli 子命令参考：
@@ -102,7 +102,7 @@ requires = ["playwright-cli"]           # npm 全局依赖
 #   playwright-cli click <target>       点击元素
 #   playwright-cli fill <target> <text> 填写输入框
 #   playwright-cli type <text>          输入文本
-#   playwright-cli --persistent         跨调用保持 session（cookie/storage）
+#   playwright-cli --persistent         跨调用保持本地浏览器上下文
 
 # ── 域名快捷路由 ──────────────────────────────────────
 # 命中的域名直接跳到指定方案，不走标准降级链
@@ -112,25 +112,25 @@ requires = ["playwright-cli"]           # npm 全局依赖
 pattern = "mp.weixin.qq.com"
 go_to = "scrapling"
 skip_layers = ["jina"]
-reason = "Jina 被微信 403 拦截，Scrapling StealthyFetcher 能绕过"
+reason = "微信公开正文适合使用专用正文选择器读取"
 
 [[domain_routes]]
 pattern = "xiaohongshu.com"
 go_to = "browser"
 skip_layers = ["jina", "scrapling", "webfetch"]
-reason = "需要登录态，只有浏览器自动化能拿到内容"
+reason = "内容通常需要用户本人浏览器可见后读取"
 
 [[domain_routes]]
 pattern = "weibo.com"
 go_to = "scrapling"
 skip_layers = ["jina"]
-reason = "反爬严格，Scrapling 大概率能穿透；失败再走浏览器"
+reason = "公开页面结构变化较多，先用正文抽取层，必要时读取用户可见页面"
 
 [[domain_routes]]
 pattern = "zhihu.com"
 go_to = "scrapling"
 skip_layers = ["jina"]
-reason = "知乎反爬频繁变化，Scrapling 比 Jina 稳定"
+reason = "页面结构变化较多，Scrapling 对公开正文抽取更稳定"
 
 # ── 域名路由模板 ──────────────────────────────────────
 # 采集新域名遇到问题时，复制此模板添加新路由：

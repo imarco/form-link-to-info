@@ -37,7 +37,7 @@
 Linky 第一阶段采用本地、文件驱动、可测试的流水线：
 
 1. Input normalization：解析 URL、去重、识别用户预提取内容。
-2. Domain plan：按域名分 batch，加载 domain metadata、session 和 domain route。
+2. Domain plan：按域名分 batch，加载 domain metadata、授权上下文和 domain route。
 3. Extraction：按 provider fallback 执行抽取，输出 `ExtractionResult`。
 4. Classification：基于 URL、metadata、正文和 domain knowledge 判断主类型。
 5. Autoresearch loop：识别信息缺口，必要时补采相关页面或标记缺口。
@@ -118,6 +118,6 @@ Report generation should consume structured data first, then render Markdown. Th
 
 ## Resolved Defaults
 
-- Add `trafilatura` after `jina` and before `scrapling` in the general fallback chain. Domain routes can still jump directly to `scrapling` or `browser` for known anti-bot/login-heavy sites.
+- Add `trafilatura` after `jina` and before `scrapling` in the general fallback chain. Domain routes can still jump directly to `scrapling` or `browser` for dynamic sites or pages that require user-visible browser context.
 - Enable trace output by default for local runs and write artifacts under `.linky/runs/{run-id}/`; `.linky/` remains git-ignored.
 - First-phase graph output is JSON only. GraphML export is deferred until a concrete visualization workflow needs it.
